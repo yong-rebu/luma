@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#090a14" />
+  <meta name="theme-color" content="#28183e" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="description" content="Turn music into a colourful live light show using your iPhone microphone." />
@@ -12,13 +12,13 @@
   <style>
     :root { color-scheme: dark; --fg: #f5f4ff; --muted: #aaa9c7; --panel: rgba(18,19,35,.79); --line: rgba(255,255,255,.13); --accent: #e970eb; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #070813; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #181128; }
     body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--fg); -webkit-tap-highlight-color: transparent; }
     button, input, select { font: inherit; }
     button { cursor: pointer; }
     button:focus-visible, input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
     #lightCanvas { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; touch-action: manipulation; }
-    #veil { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 53%, transparent 20%, rgba(1,2,9,.3) 100%); }
+    #veil { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 53%, transparent 20%, rgba(1,2,9,.08) 100%); }
     #app { position: fixed; inset: 0; display: flex; flex-direction: column; pointer-events: none; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
     .topbar, .bottom { pointer-events: auto; }
     .topbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
@@ -128,9 +128,9 @@
       </div></div>
       <div class="sliders">
         <label><div class="sliderLabel"><span>Sensitivity</span><output id="sensValue">1.6×</output></div><input type="range" id="sensitivity" min="0.5" max="3.5" value="1.6" step="0.1" /></label>
-        <label><div class="sliderLabel"><span>Light intensity</span><output id="brightValue">85%</output></div><input type="range" id="brightness" min="15" max="100" value="85" step="5" /></label>
+        <label><div class="sliderLabel"><span>Light intensity</span><output id="brightValue">145%</output></div><input type="range" id="brightness" min="25" max="200" value="145" step="5" /></label>
       </div>
-      <div class="footnote">Mic audio stays on your device • Smooth transitions, no rapid strobing</div>
+      <div class="footnote">Mic audio stays on your device • Boost up to 200% • Increase iPhone screen brightness for maximum glow</div>
     </section>
     <button id="restore">Show controls ⚙</button>
   </main>
@@ -139,9 +139,9 @@
       'use strict';
       const $ = id => document.getElementById(id);
       const canvas = $('lightCanvas');
-      const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+      const ctx = canvas.getContext('2d', { alpha: false });
       const palettes = { neon: [313, 188, 47], sunset: [347, 25, 46], ocean: [197, 242, 169], forest: [118, 169, 65], mono: [220, 220, 220] };
-      const state = { source: 'off', mode: 'glow', palette: 'neon', sensitivity: 1.6, brightness: 0.85,
+      const state = { source: 'off', mode: 'glow', palette: 'neon', sensitivity: 1.6, brightness: 1.45,
         energy: 0, bass: 0, mid: 0, high: 0, beat: 0, beatHue: 0, avgBass: 0.12, lastBeat: 0,
         stream: null, micSource: null, fileSource: null, audioContext: null, analyser: null, freq: null,
         timeData: null, objectUrl: null, audio: new Audio(), wakeLock: null, lastDraw: 0, lastUi: 0 };
@@ -164,9 +164,9 @@
       if (palettes[saved.palette]) state.palette = saved.palette;
       if (['glow','aurora','spectrum','disco'].includes(saved.mode)) state.mode = saved.mode;
       if (Number.isFinite(saved.sensitivity)) state.sensitivity = clamp(saved.sensitivity, .5, 3.5);
-      if (Number.isFinite(saved.brightness)) state.brightness = clamp(saved.brightness, .15, 1);
+      if (Number.isFinite(saved.brightness)) state.brightness = clamp(saved.version === 2 ? saved.brightness : saved.brightness * 1.7, .25, 2);
       $('sensitivity').value = state.sensitivity; $('brightness').value = Math.round(state.brightness * 100);
-      function savePrefs() { try { localStorage.setItem('luma-prefs', JSON.stringify({ mode: state.mode, palette: state.palette, sensitivity: state.sensitivity, brightness: state.brightness })); } catch {} }
+      function savePrefs() { try { localStorage.setItem('luma-prefs', JSON.stringify({ mode: state.mode, palette: state.palette, sensitivity: state.sensitivity, brightness: state.brightness, version: 2 })); } catch {} }
       function syncControls() {
         document.querySelectorAll('[data-mode]').forEach(el => { const on = el.dataset.mode === state.mode; el.classList.toggle('selected', on); el.setAttribute('aria-pressed', String(on)); });
         document.querySelectorAll('[data-palette]').forEach(el => { const on = el.dataset.palette === state.palette; el.classList.toggle('selected', on); el.setAttribute('aria-pressed', String(on)); });
@@ -328,10 +328,11 @@
       function orb(x, y, radius, hue, alpha, lightness = 57, sat = 95) {
         if (alpha < .004 || radius < 1) return;
         const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        grad.addColorStop(0, hsla(hue, sat, lightness + 12, alpha));
-        grad.addColorStop(.28, hsla(hue, sat, lightness, alpha * .66));
-        grad.addColorStop(.68, hsla(hue, sat, Math.max(22, lightness - 20), alpha * .23));
-        grad.addColorStop(1, hsla(hue, sat, 23, 0));
+        // Wide high-luminance core and softer edges for brighter colour washes.
+        grad.addColorStop(0, hsla(hue, sat, Math.min(93, lightness + 21), alpha));
+        grad.addColorStop(.34, hsla(hue, sat, Math.min(88, lightness + 10), alpha * .84));
+        grad.addColorStop(.73, hsla(hue, sat, Math.max(35, lightness - 7), alpha * .37));
+        grad.addColorStop(1, hsla(hue, sat, 32, 0));
         ctx.fillStyle = grad; ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
       }
       function draw(timestamp) {
@@ -344,15 +345,16 @@
         const level = clamp(state.energy), bass = clamp(state.bass), mid = clamp(state.mid), high = clamp(state.high), beat = clamp(state.beat);
         const bright = state.brightness;
         const baseHue = p[0] + (state.mode === 'disco' ? state.beatHue * 13 : Math.sin(timestamp / 8500) * 8) * motion;
-        const light = 4 + (8 + level * 20) * bright;
+        // Much brighter full-screen background, not just individual orbs.
+        const light = Math.min(84, 13 + (18 + level * 33) * bright);
         const base = ctx.createLinearGradient(0, 0, width, height);
-        base.addColorStop(0, hsla(baseHue, mono ? 8 : 60, light));
-        base.addColorStop(.6, hsla(p[1], mono ? 8 : 65, light * .45));
-        base.addColorStop(1, hsla(p[2], mono ? 8 : 66, light * .9));
+        base.addColorStop(0, hsla(baseHue, mono ? 8 : 88, light));
+        base.addColorStop(.6, hsla(p[1], mono ? 8 : 90, light * .82));
+        base.addColorStop(1, hsla(p[2], mono ? 8 : 90, light * .93));
         ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = base; ctx.fillRect(0, 0, width, height);
         ctx.globalCompositeOperation = 'screen';
         const dimension = Math.max(width, height);
-        const intensity = bright * (.09 + level * .72 + beat * .15);
+        const intensity = bright * (.22 + level * .84 + beat * .20);
         if (state.mode === 'glow') {
           orb(width * .50, height * .52, dimension * (.57 + bass * .10), baseHue, clamp(intensity * 1.65), 58 + bass * 8, mono ? 0 : 94);
           orb(width * (.18 + Math.sin(timestamp / 3300) * .1 * motion), height * .35, dimension * .42, p[1], clamp(intensity * .8), 52, mono ? 0 : 90);
@@ -393,6 +395,16 @@
             ctx.fillRect(col * w + 2, row * h + 2, w - 4, h - 4);
           }
           orb(width * .5, height * .45, dimension * .65, p[state.beatHue % 3], clamp(intensity * .9), 58, mono ? 0 : 94);
+        }
+        // A soft luminous pulse on musical peaks, with no hard-edged strobe.
+        if (state.source !== 'off' && (level > .12 || beat > .05)) {
+          ctx.globalCompositeOperation = 'screen';
+          const flash = clamp((level * .12 + beat * .15) * bright, 0, .32);
+          const bloom = ctx.createRadialGradient(width * .5, height * .5, 0, width * .5, height * .5, dimension * .82);
+          bloom.addColorStop(0, `rgba(255,255,255,${flash})`);
+          bloom.addColorStop(.7, `rgba(255,255,255,${flash * .3})`);
+          bloom.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = bloom; ctx.fillRect(0, 0, width, height);
         }
         ctx.globalCompositeOperation = 'source-over';
         if (timestamp - state.lastUi > 120) {
